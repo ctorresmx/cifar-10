@@ -11,9 +11,44 @@ class CIFAR10Dataset:
     SOURCE_URL = 'https://www.cs.toronto.edu/~kriz/'
     WORK_DIRECTORY = 'CIFAR-10-data'
 
+    class Dataset:
+        def __init__(self, data, labels):
+            self._data = data
+            self._labels = labels
+            self._batch_size = 0
+            self._batch_index = 0
+
+        @property
+        def num_examples(self):
+            return len(self._data)
+
+        def next_batch(self, batch_size):
+            if self._batch_size != batch_size:
+                self._batch_size = batch_size
+                self._batch_index = 0
+
+            start = self._batch_index * self._batch_size
+            end = start + self._batch_size
+
+            if start >= self.num_examples:
+                start = 0
+                end = start + self._batch_size
+            elif end > self.num_examples:
+                end = self.num_examples
+
+            self._batch_index += 1
+
+            return self._data[start:end], self._labels[start:end]
+
     def __init__(self):
         local_file = self.maybe_download('cifar-10-python.tar.gz')
         self.extract_data(local_file)
+
+        train_data, train_labels = self.get_train_set()
+        self.train = self.Dataset(train_data, train_labels)
+
+        test_data, test_labels = self.get_test_set()
+        self.test = self.Dataset(test_data, test_labels)
 
     def maybe_download(self, filename):
         if not tf.gfile.Exists(self.WORK_DIRECTORY):
@@ -67,8 +102,12 @@ class CIFAR10Dataset:
             labels += data_batch[b'labels']
 
         data = self.convert_into_2d(data)
+        labels = np.asarray(labels)
+        labels = np.reshape(labels, (-1))
+        one_hot_labels = np.zeros((labels.shape[0], labels.max() + 1))
+        one_hot_labels[np.arange(labels.shape[0]), labels] = 1
 
-        return data, labels
+        return data, one_hot_labels
 
     def get_test_set(self):
         data_batch = self.unpickle(
@@ -77,9 +116,14 @@ class CIFAR10Dataset:
 
         data = data_batch[b'data']
         labels = data_batch[b'labels']
-        data = self.convert_into_2d(data)
 
-        return data, labels
+        data = self.convert_into_2d(data)
+        labels = np.asarray(labels)
+        labels = np.reshape(labels, (-1))
+        one_hot_labels = np.zeros((labels.shape[0], labels.max() + 1))
+        one_hot_labels[np.arange(labels.shape[0]), labels] = 1
+
+        return data, one_hot_labels
 
     def get_label_names(self):
         data = self.unpickle(
@@ -90,24 +134,3 @@ class CIFAR10Dataset:
         labels = [label.decode() for label in data[b'label_names']]
 
         return labels
-
-
-dataset = CIFAR10Dataset()
-
-x, y = dataset.get_train_set()
-
-IMAGE_ID = 22
-
-x_test, y_test = dataset.get_test_set()
-
-label_names = dataset.get_label_names()
-
-from PIL import Image
-
-im = Image.fromarray(x[IMAGE_ID])
-im.save('train.png')
-print(label_names[y[IMAGE_ID]])
-
-im = Image.fromarray(x_test[IMAGE_ID])
-im.save('test.png')
-print(label_names[y_test[IMAGE_ID]])
